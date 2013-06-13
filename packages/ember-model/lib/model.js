@@ -3,6 +3,7 @@ require('ember-model/record_array');
 
 var get = Ember.get,
     set = Ember.set,
+    setProperties = Ember.setProperties,
     meta = Ember.meta,
     underscore = Ember.String.underscore;
 
@@ -31,11 +32,11 @@ Ember.Model = Ember.Object.extend(Ember.Evented, Ember.DeferredMixin, {
   isDeleted: false,
   _dirtyAttributes: null,
 
-  // TODO: rewrite w/o volatile
   isDirty: Ember.computed(function() {
     var attributes = this.attributes,
-        dirtyAttributes = this._dirtyAttributes,
+        dirtyAttributes = Ember.A(), // just for removeObject
         key, cachedValue, dataValue, desc, descMeta, type, isDirty;
+
     for (var i = 0, l = attributes.length; i < l; i++) {
       key = attributes[i];
       cachedValue = this.cacheFor(key);
@@ -43,18 +44,27 @@ Ember.Model = Ember.Object.extend(Ember.Evented, Ember.DeferredMixin, {
       desc = meta(this).descs[key];
       descMeta = desc && desc.meta();
       type = descMeta.type;
-      isDirty = dirtyAttributes && dirtyAttributes.indexOf(key) !== -1;
-      if (!isDirty && type && type.isEqual) {
-        if (!type.isEqual(dataValue, cachedValue || dataValue)) { // computed property won't have a value when just loaded
-          if (!dirtyAttributes) {
-            dirtyAttributes = this._dirtyAttributes = Ember.A();
-          }
-          dirtyAttributes.push(key);
-        }
+
+      if (type && type.isEqual) {
+        isDirty = !type.isEqual(dataValue, cachedValue || dataValue);
+      } else if (dataValue !== (cachedValue || dataValue)) {
+        isDirty = true;
+      } else {
+        isDirty = false;
       }
 
+      if (isDirty) {
+        dirtyAttributes.push(key);
+      }
     }
-    return dirtyAttributes && dirtyAttributes.length !== 0;
+
+    if (dirtyAttributes.length) {
+      this._dirtyAttributes = dirtyAttributes;
+      return true;
+    } else {
+      this._dirtyAttributes = [];
+      return false;
+    }
   }).property().volatile(),
 
   dataKey: function(key) {
@@ -112,6 +122,22 @@ Ember.Model = Ember.Object.extend(Ember.Evented, Ember.DeferredMixin, {
     }
   },
 
+  reload: function() {
+    return this.constructor.reload(this.get('id'));
+  },
+
+  revert: function() {
+    if (this.get('isDirty')) {
+      var data = get(this, 'data'),
+          reverts = {};
+      for (var i = 0; i < this._dirtyAttributes.length; i++) {
+        var attr = this._dirtyAttributes[i];
+        reverts[attr] = data[attr];
+      }
+      setProperties(this, reverts);
+    }
+  },
+
   didCreateRecord: function() {
     set(this, 'isNew', false);
     this.load(this.get('id'), this.getProperties(this.attributes));
@@ -123,7 +149,7 @@ Ember.Model = Ember.Object.extend(Ember.Evented, Ember.DeferredMixin, {
   didSaveRecord: function() {
     set(this, 'isSaving', false);
     this.trigger('didSaveRecord');
-    this._copyDirtyAttributesToData();
+    if (this.get('isDirty')) { this._copyDirtyAttributesToData(); }
   },
 
   deleteRecord: function() {
@@ -205,24 +231,37 @@ Ember.Model.reopenClass({
   _currentBatchRecordArrays: null,
 
   findById: function(id) {
-    var record = this.cachedRecordForId(id),
-        adapter = get(this, 'adapter');
+    var record = this.cachedRecordForId(id);
 
     if (!get(record, 'isLoaded')) {
-      if (adapter.findMany) {
-        if (this._currentBatchIds) {
-          if (!contains(this._currentBatchIds, id)) { this._currentBatchIds.push(id); }
-        } else {
-          this._currentBatchIds = [id];
-          this._currentBatchRecordArrays = [];
-        }
-
-        Ember.run.scheduleOnce('data', this, this._executeBatch);
-      } else {
-        adapter.find(record, id);
-      }
+      this._fetchById(record, id);
     }
     return record;
+  },
+
+  reload: function(id) {
+    var record = this.cachedRecordForId(id);
+
+    this._fetchById(record, id);
+
+    return record;
+  },
+
+  _fetchById: function(record, id) {
+    var adapter = get(this, 'adapter');
+
+    if (adapter.findMany) {
+      if (this._currentBatchIds) {
+        if (!contains(this._currentBatchIds, id)) { this._currentBatchIds.push(id); }
+      } else {
+        this._currentBatchIds = [id];
+        this._currentBatchRecordArrays = [];
+      }
+
+      Ember.run.scheduleOnce('data', this, this._executeBatch);
+    } else {
+      adapter.find(record, id);
+    }
   },
 
   _executeBatch: function() {

@@ -58,7 +58,7 @@ test("when properties are changed back to the loaded value, isDirty should be fa
 
   var obj = Ember.run(Model, Model.create, {isNew: false, name: 'Erik'});
   ok(!obj.get('isDirty'));
-  equal(obj._dirtyAttributes, null, "There shouldn't be any dirty attributes");
+  deepEqual(obj._dirtyAttributes, [], "There shouldn't be any dirty attributes");
 
   obj.set('name', 'Jeffrey');
   ok(obj.get('isDirty'));
@@ -139,4 +139,27 @@ test("a type can be specfied to attr which can determine the dirty behavior and 
   ok(!obj.get('isDirty'));
   obj.set('authorName', "Yehuda");
   ok(obj.get('isDirty'));
+});
+
+test("dirty checking works for nested objects", function() {
+  var AuthorType = {
+    isEqual: function(oldValue, newValue) {
+      return newValue.name.first.indexOf(oldValue.name.first) !== -1;
+    }
+  };
+
+  var Model = Ember.Model.extend({
+    author: attr(AuthorType)
+  });
+
+  var obj = Model.create();
+  Ember.run(function() {
+    obj.load(1, {author: {id: 1, name: { first: "Erik", last: "Bryn" }}});
+  });
+
+  ok(!obj.get('isDirty'));
+  obj.set('author.name.first', "Yehuda");
+  ok(obj.get('isDirty'));
+  obj.set('author.name.first', "Erik");
+  ok(!obj.get('isDirty')); // FIXME - this fails
 });
