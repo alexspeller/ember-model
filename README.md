@@ -55,7 +55,7 @@ existingUser.save(); // PUT /users/1.json
 
 `Model.find()` - find all records
 
-`Model.find(<String|Number>)` - find by ID (multiple calls within a single run loop can coalesce to a findMany)
+`Model.find(<String|Number>)` - find by primary key (multiple calls within a single run loop can coalesce to a findMany)
 
 `Model.find(<object>)` - find query - object gets passed directly to your adapter
 
@@ -66,10 +66,10 @@ existingUser.save(); // PUT /users/1.json
 ```javascript
 Ember.Adapter = Ember.Object.extend({
   find: function(record, id) {}, // find a single record
-  
+
   findAll: function(klass, records) {}, // find all records
-  
-  findMany: function(klass, records, ids) {}, // find many records by ID (batch find)
+
+  findMany: function(klass, records, ids) {}, // find many records by primary key (batch find)
 
   findQuery: function(klass, records, params) {}, // find records using a query
 
@@ -80,10 +80,111 @@ Ember.Adapter = Ember.Object.extend({
   deleteRecord: function(record) {} // delete a record on the server
 });
 ```
+## Attribute types
+
+Attributes by default have no type and are not typecast from the representation
+provided in the JSON format. Objects and arrays are cloned, so that clean copy
+of the attribute is maintained internally in case of wanting to revert a dirty
+record to a clean state.
+
+### Built in attribute types
+
+Ember Model has built in `Date` and `Number` types. The `Date` type will deserialize
+strings into a javascript Date object, and will serialize dates into
+[ISO 8601](http://en.wikipedia.org/wiki/ISO_8601) format. The `Number` type will
+cast into a numeric type on serialization and deserialization.
+
+```javascript
+App.Post = Ember.Model.extend({
+  date: attr(Date),
+  comment_count: attr(Number)
+});
+```
+### Custom attribute types
+
+To provide custom attribute serialization and deserialization, create an object that
+has serialize and deserialize functions, and pass it into the attr helper:
+
+```javascript
+var Time = {
+  serialize: function(time) {
+    return time.hour + ":" + time.min;
+  },
+  deserialize: function(string) {
+    var array = string.split(":");
+    return {
+      hour: parseInt(array[0], 10),
+      min: parseInt(array[1], 10)
+    };
+  }
+};
+
+var Post = Ember.Model.extend({
+  time: attr(Time)
+});
+```
+
+## Customizing
+
+There are a few properties you can set on your class to customize how either
+`Ember.Model` or `Ember.RESTAdapter` work:
+
+### primaryKey
+
+The property Ember Model uses for a per-record unique value (default: "id").
+
+```javascript
+App.User = Ember.Model.extend({
+  token: attr(),
+  name: attr()
+});
+App.User.primaryKey = 'token';
+```
+
+```
+GET /users/a4bc81f90.json
+{"token": "a4bc81f90", "name": "Brian"}
+```
+
+### rootKey
+
+When `RESTAdapter` creates a record from data loaded from the server it will
+use the data from this property instead of the whole response body.
+
+```javascript
+App.User = Ember.Model.extend({
+  name: attr()
+});
+App.User.rootKey = 'user';
+```
+
+```
+GET /users/1.json
+{"user": {"id": 1, "name": "Brian"}}
+```
+
+### collectionKey
+
+When `RESTAdapter` creates multiple records from data loaded from the server it
+will use the data from this property instead of the whole response body.
+
+```javascript
+App.User = Ember.Model.extend({
+  name: attr()
+});
+App.User.collectionKey = 'users';
+```
+
+```
+GET /users.json
+{"users": [{"id": 1, "name": "Brian"}]}
+```
 
 ## Building Ember-Model
 
-To build Ember-Model, clone the repository, run `bundle` then `rake dist`. Unminified and minified builds of Ember-Model will be placed in the `dist` directory.
+To build Ember-Model, clone the repository, run `bundle` then `rake dist`.
+Unminified and minified builds of Ember-Model will be placed in the `dist`
+directory.
 
 ## How to Run Unit Tests
 
