@@ -45,5 +45,3 @@ test("sideloading works with camelized attributes", function() {
 
   strictEqual(record.get('camelCase'), "Dromedary", "camel cased attributes retained correctly");
 });
-
-
