@@ -106,6 +106,22 @@ test(".find(id) called multiple times returns the same object (identity map)", f
   equal(first, second);
 });
 
+test("new records are added to the identity map", function() {
+  expect(2);
+
+  var record = Model.create({token: 2, name: 'Yehuda'});
+
+  record.save();
+  stop();
+
+  record.on("didCreateRecord", function() {
+    start();
+
+    ok(Model.recordCache);
+    equal(Model.recordCache[2], record);
+  });
+});
+
 test("creating a new record adds it to existing record arrays", function() {
   expect(1);
 
@@ -118,7 +134,6 @@ test("creating a new record adds it to existing record arrays", function() {
     start();
     equal(records.get('length'), 2, "The record array was updated");
   });
-
 });
 
 test("destroying a record removes it from record arrays", function() {
@@ -170,6 +185,18 @@ test("record.toJSON() is generated from Ember.attr definitions", function() {
   stop();
 });
 
+test("record.toJSON() uses rootKey if it is defined", function() {
+  expect(1);
+
+  Model.rootKey = 'model';
+
+  var record = Ember.run(Model, Model.find, 'a');
+  record.on('didLoad', function() {
+    start();
+    deepEqual(record.toJSON(), { model: { name: 'Erik' } });
+  });
+  stop();
+});
 
 test("Model.find() returns a deferred", function() {
   expect(2);

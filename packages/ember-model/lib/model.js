@@ -23,6 +23,13 @@ function concatUnique(toArray, fromArray) {
   return toArray;
 }
 
+function hasCachedValue(object, key) {
+  var objectMeta = meta(object, false);
+  if (objectMeta) {
+    return key in objectMeta.cache;
+  }
+}
+
 Ember.run.queues.push('data');
 
 Ember.Model = Ember.Object.extend(Ember.Evented, Ember.DeferredMixin, {
@@ -32,6 +39,17 @@ Ember.Model = Ember.Object.extend(Ember.Evented, Ember.DeferredMixin, {
   isDeleted: false,
   _dirtyAttributes: null,
 
+  /**
+    Called when attribute is accessed.
+
+    @method getAttr
+    @param key {String} key which is being accessed
+    @param value {Object} value, which will be returned from getter by default
+  */
+  getAttr: function(key, value) {
+    return value;
+  },
+
   isDirty: Ember.computed(function() {
     var attributes = this.attributes,
         dirtyAttributes = Ember.A(), // just for removeObject
@@ -39,6 +57,7 @@ Ember.Model = Ember.Object.extend(Ember.Evented, Ember.DeferredMixin, {
 
     for (var i = 0, l = attributes.length; i < l; i++) {
       key = attributes[i];
+      if (!hasCachedValue(this, key)) { continue; }
       cachedValue = this.cacheFor(key);
       dataValue = get(this, 'data.'+this.dataKey(key));
       desc = meta(this).descs[key];
@@ -46,8 +65,8 @@ Ember.Model = Ember.Object.extend(Ember.Evented, Ember.DeferredMixin, {
       type = descMeta.type;
 
       if (type && type.isEqual) {
-        isDirty = !type.isEqual(dataValue, cachedValue || dataValue);
-      } else if (dataValue !== (cachedValue || dataValue)) {
+        isDirty = !type.isEqual(dataValue, cachedValue);
+      } else if (dataValue !== cachedValue) {
         isDirty = true;
       } else {
         isDirty = false;
@@ -106,7 +125,8 @@ Ember.Model = Ember.Object.extend(Ember.Evented, Ember.DeferredMixin, {
 
   toJSON: function() {
     var key, meta,
-      properties = this.getProperties(this.attributes);
+        properties = this.getProperties(this.attributes);
+
     for (key in properties) {
       meta = this.constructor.metaForProperty(key);
       if (meta.type && meta.type.serialize) {
@@ -115,7 +135,15 @@ Ember.Model = Ember.Object.extend(Ember.Evented, Ember.DeferredMixin, {
         properties[key] = Ember.Model.dataTypes[meta.type].serialize(properties[key]);
       }
     }
-    return properties;
+
+    if (this.constructor.rootKey) {
+      var json = {};
+      json[this.constructor.rootKey] = properties;
+
+      return json;
+    } else {
+      return properties;
+    }
   },
 
   save: function() {
@@ -150,8 +178,15 @@ Ember.Model = Ember.Object.extend(Ember.Evented, Ember.DeferredMixin, {
   },
 
   didCreateRecord: function() {
+    var primaryKey = get(this.constructor, 'primaryKey'),
+        id = get(this, primaryKey);
+
     set(this, 'isNew', false);
-    this.load(this.get(get(this.constructor, 'primaryKey')), this.getProperties(this.attributes));
+
+    if (!this.constructor.recordCache) this.constructor.recordCache = {};
+    this.constructor.recordCache[id] = this;
+
+    this.load(id, this.getProperties(this.attributes));
     this.constructor.addToRecordArrays(this);
     this.trigger('didCreateRecord');
     this.didSaveRecord();
@@ -281,22 +316,31 @@ Ember.Model.reopenClass({
     var batchIds = this._currentBatchIds,
         batchRecordArrays = this._currentBatchRecordArrays,
         self = this,
-        records;
+        requestIds = [],
+        recordOrRecordArray,
+        i;
 
     this._currentBatchIds = null;
     this._currentBatchRecordArrays = null;
 
-    if (batchIds.length === 1) {
-      get(this, 'adapter').find(this.cachedRecordForId(batchIds[0]), batchIds[0]);
-    } else {
-      records = Ember.RecordArray.create({_ids: batchIds}),
-      get(this, 'adapter').findMany(this, records, batchIds);
-      records.then(function() {
-        for (var i = 0, l = batchRecordArrays.length; i < l; i++) {
-          batchRecordArrays[i].loadForFindMany(self);
-        }
-      });
+    for (i = 0; i < batchIds.length; i++) {
+      if (!this.cachedRecordForId(batchIds[i]).get('isLoaded')) {
+        requestIds.push(batchIds[i]);
+      }
     }
+
+    if (batchIds.length === 1) {
+      recordOrRecordArray = get(this, 'adapter').find(this.cachedRecordForId(batchIds[0]), batchIds[0]);
+    } else {
+      recordOrRecordArray = Ember.RecordArray.create({_ids: batchIds}),
+      get(this, 'adapter').findMany(this, recordOrRecordArray, requestIds);
+    }
+
+    recordOrRecordArray.then(function() {
+      for (var i = 0, l = batchRecordArrays.length; i < l; i++) {
+        batchRecordArrays[i].loadForFindMany(self);
+      }
+    });
   },
 
   findQuery: function(params) {

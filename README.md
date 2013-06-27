@@ -8,6 +8,10 @@ EM makes it easy to provide hooks for making requests to your server, and requir
 
 EM is still very much a work in progress, but it's flexible enough to be used in apps today. It was extracted out of an Ember app. Please see the issues section for a list of bugs and planned features.
 
+## Getting Started with Ember Model
+
+[![Getting started Embercast](http://f.cl.ly/items/1T1t2T2p3d2u0A2b0q2P/embercast.png)](http://www.embercasts.com/episodes/getting-started-with-ember-model)
+
 ## Features
 
 - BYO$A (bring your own $.ajax)
@@ -203,6 +207,15 @@ one of the best is [rvm](https://rvm.io/).
 
 2. Then visit: `http://localhost:9292`.
 
+## Who's using Ember Model?
+
+* [LiveNation](http://www.livenation.com)
+* [Square](http://www.squareup.com)
+* [Embercasts](http://www.embercasts.com)
+* [Digital Science](http://www.digital-science.com)
+* [Travis CI](https://travis-ci.org)
+
+Are you using Ember Model? Submit a pull request to add your project to this list!
 
 ## Special Thanks
 
